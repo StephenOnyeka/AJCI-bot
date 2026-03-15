@@ -1,31 +1,29 @@
-import { GoogleGenAI } from "@google/genai";
-import { NextResponse } from "next/server";
-import dbConnect from "@/lib/mongodb";
-import Chat from "@/models/Chat";
+const express = require('express');
+const router = express.Router();
+const Chat = require('../models/Chat');
+const { GoogleGenAI } = require('@google/genai');
 
 const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 const genAI = new GoogleGenAI({ apiKey });
 
-export async function POST(req: Request) {
+router.post('/', async (req, res) => {
   try {
-    const { email, messages } = await req.json();
+    const { email, messages } = req.body;
     
     if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "Invalid messages format" }, { status: 400 });
+      return res.status(400).json({ error: "Invalid messages format" });
     }
 
     if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+      return res.status(400).json({ error: "Email is required" });
     }
 
     // Get the last message content
     const lastMessage = messages[messages.length - 1];
     
     if (!lastMessage || !lastMessage.content || lastMessage.role !== 'user') {
-      return NextResponse.json({ error: "Invalid last message" }, { status: 400 });
+      return res.status(400).json({ error: "Invalid last message" });
     }
-
-    await dbConnect();
 
     // Find or create chat document
     let chat = await Chat.findOne({ email });
@@ -37,7 +35,7 @@ export async function POST(req: Request) {
     chat.messages.push({ role: 'user', content: lastMessage.content });
     
     // Convert to Gemini format
-    const history = chat.messages.map((msg: any) => ({
+    const history = chat.messages.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
@@ -56,10 +54,12 @@ export async function POST(req: Request) {
     chat.messages.push(assistantMessage);
     await chat.save();
 
-    return NextResponse.json(assistantMessage);
+    return res.json(assistantMessage);
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Gemini/DB API Error:", error);
-    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+    return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
-}
+});
+
+module.exports = router;

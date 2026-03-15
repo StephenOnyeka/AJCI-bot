@@ -50,7 +50,7 @@ export default function ChatInterface() {
   const loadHistory = async (userEmail: string) => {
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`/api/history?email=${encodeURIComponent(userEmail)}`);
+      const response = await fetch(`http://localhost:5000/api/history?email=${encodeURIComponent(userEmail)}`);
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
@@ -91,7 +91,7 @@ export default function ChatInterface() {
     setInput("");
     
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

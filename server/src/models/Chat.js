@@ -1,16 +1,4 @@
-import mongoose from 'mongoose';
-
-export interface IMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-export interface IChat extends mongoose.Document {
-  email: string;
-  messages: IMessage[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+const mongoose = require('mongoose');
 
 const MessageSchema = new mongoose.Schema({
   role: { type: String, enum: ['user', 'assistant'], required: true },
@@ -25,4 +13,4 @@ const ChatSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.Chat || mongoose.model<IChat>('Chat', ChatSchema);
+module.exports = mongoose.models.Chat || mongoose.model('Chat', ChatSchema);
