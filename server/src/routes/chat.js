@@ -74,6 +74,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// hit /api/chat/models and you'll see exactly which model strings are valid for your key and SDK version.
 router.get('/models', async (req, res) => {
   const models = await genAI.models.list();
   res.json(models);
