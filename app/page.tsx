@@ -156,13 +156,48 @@ export default function ChatInterface() {
 
       const data = await response.json();
       
-      // Update messages with AI response
-      setMessages([...optimisticMessages, { role: "assistant", content: data.content }]);
-      
-      // If this was a new session, update state and refresh sidebar
-      if (!currentSessionId && data.sessionId) {
-        setCurrentSessionId(data.sessionId);
-        loadHistoryList(email);
+      // Background worker pattern: we expect a jobId
+      if (data.jobId) {
+        // If this was a new session, update state and refresh sidebar early
+        if (!currentSessionId && data.sessionId) {
+          setCurrentSessionId(data.sessionId);
+          loadHistoryList(email);
+        }
+
+        // Poll for job completion
+        let jobCompleted = false;
+        let finalAssistantMessage = null;
+
+        while (!jobCompleted) {
+          // Wait 1.5 seconds between polls
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          
+          const statusRes = await fetch(`http://localhost:5000/api/chat/status/${data.jobId}`);
+          if (!statusRes.ok) throw new Error("Status API error");
+          
+          const statusData = await statusRes.json();
+          
+          if (statusData.state === "completed") {
+            jobCompleted = true;
+            finalAssistantMessage = statusData.result;
+          } else if (statusData.state === "failed") {
+            jobCompleted = true;
+            throw new Error(statusData.reason || "Job failed during processing");
+          }
+          // if 'waiting' or 'active' or 'delayed', loop continues
+        }
+
+        if (finalAssistantMessage) {
+          setMessages([...optimisticMessages, { role: "assistant", content: finalAssistantMessage.content }]);
+        }
+      } else {
+        // Fallback for synchronous responses (just in case)
+        setMessages([...optimisticMessages, { role: "assistant", content: data.content }]);
+        
+        if (!currentSessionId && data.sessionId) {
+          setCurrentSessionId(data.sessionId);
+          loadHistoryList(email);
+        }
       }
     } catch (error) {
       console.error("Chat Error:", error);

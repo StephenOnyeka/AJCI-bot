@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const chatQueue = require('../queue/chatQueue');
 const { GoogleGenAI } = require('@google/genai');
 
 const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -46,31 +47,57 @@ router.post('/', async (req, res) => {
     // Add the user message to the session
     session.messages.push({ role: 'user', content: lastMessage.content });
 
-    // Build Gemini history from this session's messages (all but the latest we just pushed)
+    // Save the user's message immediately so it's in the DB
+    await user.save();
+
+    // Build Gemini history from this session's messages
     const history = session.messages.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }],
     }));
 
-    const response = await genAI.models.generateContent({
-      // model: 'gemini-1.5-flash-latest',
-      model: 'gemini-flash-latest',
-      contents: history,
+    // Enqueue job for worker to process asynchronously
+    const job = await chatQueue.add('generate-chat-response', {
+      email,
+      sessionId: session._id,
+      history,
     });
 
-    const assistantMessage = {
-      role: 'assistant',
-      content: response.text,
-    };
-
-    // Add assistant reply to session
-    session.messages.push(assistantMessage);
-    await user.save();
-
-    return res.json({ ...assistantMessage, sessionId: session._id });
+    // Immediately return 202 Accepted with the Job ID and Session ID
+    return res.status(202).json({ 
+      message: 'Chat request accepted',
+      jobId: job.id,
+      sessionId: session._id 
+    });
   } catch (error) {
     console.error('Chat API Error:', error);
     return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// GET /api/chat/status/:jobId
+// Endpoint for frontend Next.js to poll job status
+router.get('/status/:jobId', async (req, res) => {
+  try {
+    const job = await chatQueue.getJob(req.params.jobId);
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const state = await job.getState();
+    const reason = job.failedReason;
+    const result = job.returnvalue;
+
+    res.json({
+      id: job.id,
+      state, // 'waiting', 'active', 'completed', 'failed', etc.
+      reason,
+      result // Populated with assistantMessage if completed
+    });
+  } catch (error) {
+    console.error('Job Status Error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 
